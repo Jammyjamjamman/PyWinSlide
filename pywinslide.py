@@ -54,7 +54,7 @@ class Window(object):
         
         
     def get_cur_stats(self):
-        return
+        return None
 
 
 class Win_mean_meansq(Window):
@@ -149,5 +149,62 @@ def sliding_mean_var(dat_iter,
     return sliding_window(dat_iter, window_sz, Win_mean_meansq)
 
 
+class Win_mean_ds(Window):
+    def __init__(self, init_dat, freq):
+        if freq.total_seconds == 0.0:
+            raise ValueError("frequency of samples must be greater than 0!")
+        self.freq = freq
+        super().__init__(init_dat, win_sz = freq)
+        self.sum = self.win[0].val
+        self.win_len = 1
+
+
+    def next_element(self):
+        try:
+            self.cur_win_time += self.freq
+        except AttributeError:
+            self.cur_win_time = self.win[0].time
+            
+            if self.freq.microseconds == 0:
+                self.cur_win_time = self.cur_win_time.replace(microsecond=0)
+                if self.freq.seconds % 60 == 0:
+                    self.cur_win_time = self.cur_win_time.replace(second=0)
+                    if self.freq.seconds % 3600 == 0:
+                        self.cur_win_time = self.cur_win_time.replace(minute=0)
+                        if self.freq.seconds % 86400 == 0:
+                            self.cur_win_time = self.cur_win_time.replace(hour=0)
+
+        self.cur_win_min = self.cur_win_time - self.half_win_sz
+        self.cur_win_max = self.cur_win_time + self.half_win_sz
+
+
+
+    def append_queued(self):
+        super().append_queued()
+        self.sum += self.queued_dat.val
+        self.win_len += 1
+        
+    
+    def remove_dat(self):
+        try:
+            while self.win[0].time < self.cur_win_min:
+                self.sum -= self.win.pop(0).val
+                self.win_len -= 1
+        except IndexError:
+            pass
+            
+    
+    
+    def get_cur_stats(self):
+        try:
+            return (self.cur_win_time,
+                    self.sum/self.win_len)
+        except ZeroDivisionError:
+            return (self.cur_win_time,
+                    None)
+            
+            
+def mean_downresample(dat_iter, freq):
+    return sliding_window(dat_iter, window_sz=freq, Window_cls=Win_mean_ds)
 # TODO: write other slidng window functions
 # e.g. rolling variance, custom rolling functions
